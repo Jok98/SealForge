@@ -2,6 +2,7 @@ package com.sealforge.ui.view;
 
 import com.sealforge.domain.enumtype.SealingScope;
 import com.sealforge.domain.model.CertificateReference;
+import com.sealforge.domain.model.KubesealRuntimeStatus;
 import javafx.geometry.Insets;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
@@ -46,6 +47,7 @@ public final class SecretEditorView {
     private final VBox entryRowsContainer = new VBox(8);
     private final Button addEntryButton = new Button("Add Entry");
     private final Button generateButton = new Button("Generate Preview");
+    private final Button cancelOperationButton = new Button("Cancel Running Action");
     private final Button resetButton = new Button("Reset Draft");
     private final Label editorStatusLabel = new Label("Generate a preview to open the validation and export screen.");
 
@@ -101,10 +103,12 @@ public final class SecretEditorView {
         return resetButton;
     }
 
-    public void setKubesealStatus(boolean available, String executablePath) {
-        kubesealStatusLabel.setText(available
-                ? "kubeseal ready at " + executablePath
-                : "kubeseal not found. Open Settings to configure an executable path.");
+    public Button cancelOperationButton() {
+        return cancelOperationButton;
+    }
+
+    public void setKubesealStatus(KubesealRuntimeStatus kubesealRuntimeStatus) {
+        kubesealStatusLabel.setText(kubesealRuntimeStatus.message());
     }
 
     public void setCertificateDetails(CertificateReference certificateReference) {
@@ -133,6 +137,23 @@ public final class SecretEditorView {
     public void setEditorError(String message) {
         editorStatusLabel.setText(message);
         editorStatusLabel.setStyle(ERROR_LABEL_STYLE);
+    }
+
+    public void setBusy(boolean busy, String message) {
+        inspectCertificateButton.setDisable(busy);
+        loadCertificateFileButton.setDisable(busy);
+        secretNameField.setDisable(busy);
+        namespaceField.setDisable(busy);
+        secretTypeField.setDisable(busy);
+        scopeComboBox.setDisable(busy);
+        entryRowsContainer.setDisable(busy);
+        addEntryButton.setDisable(busy);
+        generateButton.setDisable(busy);
+        resetButton.setDisable(busy);
+        cancelOperationButton.setDisable(!busy);
+        if (busy) {
+            setEditorStatus(message);
+        }
     }
 
     public void clearInlineValidation() {
@@ -196,6 +217,7 @@ public final class SecretEditorView {
         entryRowsContainer.setId("entry-rows-container");
         addEntryButton.setId("add-entry-button");
         generateButton.setId("generate-preview-button");
+        cancelOperationButton.setId("cancel-operation-button");
         resetButton.setId("reset-draft-button");
         editorStatusLabel.setId("editor-status-label");
 
@@ -210,6 +232,8 @@ public final class SecretEditorView {
         scopeComboBox.getItems().setAll(SealingScope.values());
         scopeComboBox.setValue(SealingScope.STRICT);
         setScopeDescription(SealingScope.STRICT);
+
+        cancelOperationButton.setDisable(true);
 
         VBox content = new VBox(
                 16,
@@ -239,7 +263,7 @@ public final class SecretEditorView {
                         addEntryButton),
                 section(
                         "Actions",
-                        new HBox(8, generateButton, resetButton),
+                        new HBox(8, generateButton, cancelOperationButton, resetButton),
                         editorStatusLabel));
 
         content.setPadding(new Insets(6, 0, 12, 0));

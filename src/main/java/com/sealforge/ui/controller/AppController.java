@@ -10,6 +10,7 @@ import com.sealforge.domain.exception.SealForgeException;
 import com.sealforge.domain.exception.UserInputException;
 import com.sealforge.domain.model.CertificateReference;
 import com.sealforge.domain.model.GeneratedYaml;
+import com.sealforge.domain.model.KubesealRuntimeStatus;
 import com.sealforge.domain.model.SecretDraft;
 import com.sealforge.domain.model.ValidationResult;
 import com.sealforge.ui.component.SecretEntryRowView;
@@ -23,6 +24,7 @@ import com.sealforge.ui.view.PreviewView;
 import com.sealforge.ui.view.SecretEditorView;
 import com.sealforge.ui.view.SettingsView;
 import com.sealforge.ui.view.ShellView;
+import javafx.concurrent.Task;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
@@ -38,6 +40,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.function.Consumer;
 
 public final class AppController {
 
@@ -55,6 +59,7 @@ public final class AppController {
     private CertificateReference loadedCertificate;
     private GeneratedYaml generatedYaml;
     private Scene shortcutsScene;
+    private Task<?> activeTask;
 
     public AppController(AppContext appContext) {
         this.appContext = appContext;
@@ -124,6 +129,7 @@ public final class AppController {
         secretEditorView.loadCertificateFileButton().setOnAction(event -> loadCertificateFromFile());
         secretEditorView.addEntryButton().setOnAction(event -> addEntryRow(new SecretEntryRowModel()));
         secretEditorView.generateButton().setOnAction(event -> generateYaml());
+        secretEditorView.cancelOperationButton().setOnAction(event -> cancelActiveOperation());
         secretEditorView.resetButton().setOnAction(event -> {
             if (confirmReset()) {
                 applyResetState();
@@ -135,6 +141,7 @@ public final class AppController {
     private void registerPreviewActions() {
         previewView.backToEditorButton().setOnAction(event -> navigate(AppScreen.SECRET_EDITOR));
         previewView.validateButton().setOnAction(event -> validateSealedSecret());
+        previewView.cancelOperationButton().setOnAction(event -> cancelActiveOperation());
         previewView.copySecretButton().setOnAction(event -> copyYaml(
                 generatedYaml == null ? "" : generatedYaml.plainSecretYaml(),
                 "Plain Secret YAML copied to the clipboard."));
@@ -225,19 +232,27 @@ public final class AppController {
     private void generateYaml() {
         try {
             secretEditorView.clearInlineValidation();
-            ensureCertificateLoaded();
-            SecretDraft draft = buildDraft();
-            String plainSecretYaml = appContext.generateYamlUseCase().execute(draft);
-            String sealedSecretYaml = appContext.sealSecretUseCase().execute(plainSecretYaml, draft, loadedCertificate);
-            generatedYaml = new GeneratedYaml(plainSecretYaml, sealedSecretYaml);
-            previewView.setGeneratedYaml(generatedYaml);
-            previewView.setValidationResult(new ValidationResult(false, "Validation not run yet.", ""));
-            previewView.setTechnicalDetails("");
-            secretEditorView.setEditorStatus("Preview generated successfully. Review the YAML before exporting.");
-            shellView.setFooterMessage("Preview generated locally. Plain Secret YAML is only exposed on copy or export.");
-            updateHomeSummary();
-            updatePreviewState();
-            navigate(AppScreen.PREVIEW);
+            SecretDraftInput draftInput = snapshotDraftInput();
+            String certificatePem = formModel.certificatePemProperty().get();
+            CertificateReference currentCertificate = loadedCertificate;
+
+            runBackgroundTask(
+                    AppScreen.SECRET_EDITOR,
+                    "Generating preview with kubeseal...",
+                    () -> generatePreview(draftInput, certificatePem, currentCertificate),
+                    result -> {
+                        loadedCertificate = result.certificateReference();
+                        secretEditorView.setCertificateDetails(result.certificateReference());
+                        generatedYaml = result.generatedYaml();
+                        previewView.setGeneratedYaml(generatedYaml);
+                        previewView.setValidationResult(new ValidationResult(false, "Validation not run yet.", ""));
+                        previewView.setTechnicalDetails("");
+                        secretEditorView.setEditorStatus("Preview generated successfully. Review the YAML before exporting.");
+                        shellView.setFooterMessage("Preview generated locally. Plain Secret YAML is only exposed on copy or export.");
+                        updateHomeSummary();
+                        updatePreviewState();
+                        navigate(AppScreen.PREVIEW);
+                    });
         } catch (Exception exception) {
             handleFailure(exception);
         }
@@ -245,10 +260,16 @@ public final class AppController {
 
     private void validateSealedSecret() {
         try {
-            ValidationResult validationResult = appContext.validateSealedSecretUseCase()
-                    .execute(previewView.sealedSecretYamlArea().getText());
-            previewView.setValidationResult(validationResult);
-            shellView.setFooterMessage(validationResult.message());
+            String sealedSecretYaml = previewView.sealedSecretYamlArea().getText();
+            runBackgroundTask(
+                    AppScreen.PREVIEW,
+                    "Validating SealedSecret with kubeseal...",
+                    () -> appContext.validateSealedSecretUseCase().execute(sealedSecretYaml),
+                    validationResult -> {
+                        previewView.setValidationResult(validationResult);
+                        previewView.setPreviewStatus(validationResult.message());
+                        shellView.setFooterMessage(validationResult.message());
+                    });
         } catch (Exception exception) {
             handleFailure(exception);
         }
@@ -318,8 +339,8 @@ public final class AppController {
         }
     }
 
-    private SecretDraft buildDraft() {
-        SecretDraftInput draftInput = new SecretDraftInput(
+    private SecretDraftInput snapshotDraftInput() {
+        return new SecretDraftInput(
                 formModel.secretNameProperty().get(),
                 formModel.namespaceProperty().get(),
                 formModel.secretTypeProperty().get(),
@@ -327,28 +348,46 @@ public final class AppController {
                 formModel.entries().stream()
                         .map(model -> new SecretEntryInput(model.keyProperty().get(), model.valueProperty().get()))
                         .toList());
-        return appContext.createSecretDraftUseCase().execute(draftInput);
+    }
+
+    private GeneratePreviewResult generatePreview(
+            SecretDraftInput draftInput,
+            String certificatePem,
+            CertificateReference currentCertificate) {
+        CertificateReference certificateReference = currentCertificate;
+        if (certificateReference == null || !certificatePem.strip().equals(certificateReference.pemContent().strip())) {
+            certificateReference = parseCertificate(
+                    CertificateSourceType.PASTE,
+                    "Pasted certificate",
+                    certificatePem);
+        }
+
+        SecretDraft draft = appContext.createSecretDraftUseCase().execute(draftInput);
+        String plainSecretYaml = appContext.generateYamlUseCase().execute(draft);
+        String sealedSecretYaml = appContext.sealSecretUseCase().execute(plainSecretYaml, draft, certificateReference);
+        return new GeneratePreviewResult(certificateReference, new GeneratedYaml(plainSecretYaml, sealedSecretYaml));
     }
 
     private CertificateReference loadCertificate(
             CertificateSourceType sourceType,
             String sourceDescription,
             String pemContent) {
-        CertificateReference certificateReference = appContext.loadCertificateUseCase().execute(new CertificateLoadRequest(
+        CertificateReference certificateReference = parseCertificate(
                 sourceType,
                 sourceDescription,
-                pemContent));
+                pemContent);
         secretEditorView.setCertificateDetails(certificateReference);
         return certificateReference;
     }
 
-    private void ensureCertificateLoaded() {
-        if (loadedCertificate == null) {
-            loadedCertificate = loadCertificate(
-                    CertificateSourceType.PASTE,
-                    "Pasted certificate",
-                    formModel.certificatePemProperty().get());
-        }
+    private CertificateReference parseCertificate(
+            CertificateSourceType sourceType,
+            String sourceDescription,
+            String pemContent) {
+        return appContext.loadCertificateUseCase().execute(new CertificateLoadRequest(
+                sourceType,
+                sourceDescription,
+                pemContent));
     }
 
     private void addEntryRow(SecretEntryRowModel rowModel) {
@@ -400,11 +439,10 @@ public final class AppController {
     }
 
     private void updateKubesealStatus() {
-        boolean kubesealAvailable = appContext.kubesealGateway().isAvailable();
-        String executablePath = appContext.kubesealGateway().executablePath().toString();
-        secretEditorView.setKubesealStatus(kubesealAvailable, executablePath);
-        settingsView.setKubesealStatus(kubesealAvailable, executablePath);
-        homeView.setKubesealStatus(kubesealAvailable, executablePath);
+        KubesealRuntimeStatus kubesealRuntimeStatus = appContext.kubesealGateway().inspectStatus();
+        secretEditorView.setKubesealStatus(kubesealRuntimeStatus);
+        settingsView.setKubesealStatus(kubesealRuntimeStatus);
+        homeView.setKubesealStatus(kubesealRuntimeStatus);
     }
 
     private void updateHomeSummary() {
@@ -437,6 +475,7 @@ public final class AppController {
         scene.getAccelerators().put(shortcut(KeyCode.DIGIT4), () -> navigate(AppScreen.SETTINGS));
         scene.getAccelerators().put(new KeyCodeCombination(KeyCode.F1), () -> navigate(AppScreen.ABOUT));
         scene.getAccelerators().put(shortcut(KeyCode.ENTER), this::generateYaml);
+        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.ESCAPE), this::cancelActiveOperation);
         scene.getAccelerators().put(shortcutShift(KeyCode.R), () -> {
             if (confirmReset()) {
                 applyResetState();
@@ -499,6 +538,78 @@ public final class AppController {
         showError("The requested action could not be completed.");
     }
 
+    private <T> void runBackgroundTask(
+            AppScreen ownerScreen,
+            String busyMessage,
+            Callable<T> action,
+            Consumer<T> onSuccess) {
+        if (activeTask != null) {
+            return;
+        }
+
+        Task<T> task = new Task<>() {
+            @Override
+            protected T call() throws Exception {
+                return action.call();
+            }
+        };
+
+        activeTask = task;
+        setBusyState(ownerScreen, true, busyMessage);
+        shellView.setFooterMessage(busyMessage);
+
+        task.setOnSucceeded(event -> {
+            activeTask = null;
+            setBusyState(ownerScreen, false, "");
+            onSuccess.accept(task.getValue());
+        });
+        task.setOnCancelled(event -> {
+            activeTask = null;
+            setBusyState(ownerScreen, false, "");
+            previewView.setPreviewStatus("Operation cancelled.");
+            secretEditorView.setEditorStatus("Operation cancelled.");
+            shellView.setFooterMessage("Operation cancelled.");
+        });
+        task.setOnFailed(event -> {
+            activeTask = null;
+            setBusyState(ownerScreen, false, "");
+            Throwable failure = task.getException();
+            if (isCancellationFailure(task, failure)) {
+                previewView.setPreviewStatus("Operation cancelled.");
+                secretEditorView.setEditorStatus("Operation cancelled.");
+                shellView.setFooterMessage("Operation cancelled.");
+                return;
+            }
+            if (failure instanceof Exception exception) {
+                handleFailure(exception);
+                return;
+            }
+            handleFailure(new RuntimeException(failure));
+        });
+
+        Thread.ofVirtual().name("sealforge-background-task").start(task);
+    }
+
+    private boolean isCancellationFailure(Task<?> task, Throwable failure) {
+        return task.isCancelled()
+                || failure instanceof InterruptedException
+                || (failure != null
+                && failure.getMessage() != null
+                && failure.getMessage().toLowerCase().contains("interrupted"));
+    }
+
+    private void cancelActiveOperation() {
+        if (activeTask != null) {
+            activeTask.cancel(true);
+        }
+    }
+
+    private void setBusyState(AppScreen ownerScreen, boolean busy, String message) {
+        shellView.setNavigationDisabled(busy);
+        secretEditorView.setBusy(busy && ownerScreen == AppScreen.SECRET_EDITOR, message);
+        previewView.setBusy(busy && ownerScreen == AppScreen.PREVIEW, message);
+    }
+
     private void showInlineUserInputError(String message) {
         if (message.contains("certificate")) {
             navigate(AppScreen.SECRET_EDITOR);
@@ -559,5 +670,8 @@ public final class AppController {
 
     private Window window() {
         return shellView.root().getScene() == null ? null : shellView.root().getScene().getWindow();
+    }
+
+    private record GeneratePreviewResult(CertificateReference certificateReference, GeneratedYaml generatedYaml) {
     }
 }

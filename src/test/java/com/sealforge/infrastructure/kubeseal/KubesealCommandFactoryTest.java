@@ -22,5 +22,10 @@ class KubesealCommandFactoryTest {
         assertThat(commandFactory.buildValidateCommand(Path.of("/usr/local/bin/kubeseal")))
                 .containsExactly("/usr/local/bin/kubeseal", "--validate");
     }
-}
 
+    @Test
+    void buildsHelpCommand() {
+        assertThat(commandFactory.buildHelpCommand(Path.of("/usr/local/bin/kubeseal")))
+                .containsExactly("/usr/local/bin/kubeseal", "--help");
+    }
+}

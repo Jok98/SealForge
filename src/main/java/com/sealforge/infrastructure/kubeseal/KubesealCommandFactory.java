@@ -23,5 +23,8 @@ public final class KubesealCommandFactory {
     public List<String> buildVersionCommand(Path executable) {
         return List.of(executable.toString(), "--version");
     }
-}
 
+    public List<String> buildHelpCommand(Path executable) {
+        return List.of(executable.toString(), "--help");
+    }
+}

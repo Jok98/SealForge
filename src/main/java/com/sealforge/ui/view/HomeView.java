@@ -1,5 +1,6 @@
 package com.sealforge.ui.view;
 
+import com.sealforge.domain.model.KubesealRuntimeStatus;
 import javafx.geometry.Insets;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
@@ -39,10 +40,8 @@ public final class HomeView {
         return openSettingsButton;
     }
 
-    public void setKubesealStatus(boolean available, String executablePath) {
-        kubesealStatusLabel.setText(available
-                ? "kubeseal ready at " + executablePath
-                : "kubeseal not detected. Configure it in Settings before sealing.");
+    public void setKubesealStatus(KubesealRuntimeStatus kubesealRuntimeStatus) {
+        kubesealStatusLabel.setText(kubesealRuntimeStatus.message());
     }
 
     public void setCertificateStatus(String summary) {

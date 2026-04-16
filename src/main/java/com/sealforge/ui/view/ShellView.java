@@ -51,6 +51,10 @@ public final class ShellView {
                 : message);
     }
 
+    public void setNavigationDisabled(boolean disabled) {
+        navigationButtons.values().forEach(button -> button.setDisable(disabled));
+    }
+
     private void buildLayout(String applicationName) {
         root.setPadding(new Insets(18));
         root.setId("app-shell");

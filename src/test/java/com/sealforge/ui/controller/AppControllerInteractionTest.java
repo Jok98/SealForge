@@ -17,6 +17,7 @@ import com.sealforge.config.ApplicationSettings;
 import com.sealforge.config.RuntimeSettings;
 import com.sealforge.domain.enumtype.SealingScope;
 import com.sealforge.domain.model.CertificateReference;
+import com.sealforge.domain.model.KubesealRuntimeStatus;
 import com.sealforge.domain.model.ValidationResult;
 import com.sealforge.domain.validation.SecretDraftValidator;
 import com.sealforge.infrastructure.certificate.PemCertificateParser;
@@ -33,12 +34,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.testfx.api.FxRobot;
 import org.testfx.framework.junit5.ApplicationExtension;
 import org.testfx.framework.junit5.Start;
+import org.testfx.util.WaitForAsyncUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -86,10 +89,13 @@ class AppControllerInteractionTest {
     }
 
     @Test
-    void invalidCertificateShowsInlineEditorError(FxRobot robot) {
+    void invalidCertificateShowsInlineEditorError(FxRobot robot) throws Exception {
         robot.clickOn("#nav-secret-editor");
         robot.clickOn("#certificate-text-area").write("not-a-pem");
         robot.press(KeyCode.CONTROL, KeyCode.ENTER).release(KeyCode.ENTER, KeyCode.CONTROL);
+
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
+                () -> robot.lookup("#certificate-error-label").queryAs(Label.class).getText().contains("parsed"));
 
         assertThat(robot.lookup("#screen-title").queryAs(Label.class).getText()).isEqualTo("Secret Editor");
         assertThat(robot.lookup("#certificate-error-label").queryAs(Label.class).getText())
@@ -111,7 +117,7 @@ class AppControllerInteractionTest {
     }
 
     @Test
-    void generateShortcutOpensPreviewWithGeneratedYaml(FxRobot robot) {
+    void generateShortcutOpensPreviewWithGeneratedYaml(FxRobot robot) throws Exception {
         robot.clickOn("#nav-secret-editor");
         replaceText(robot, "#certificate-text-area", VALID_CERTIFICATE_PEM);
         replaceText(robot, "#secret-name-field", "demo-secret");
@@ -120,6 +126,9 @@ class AppControllerInteractionTest {
         replaceText(robot, "#secret-entry-value-field-masked", "super-secret");
 
         robot.press(KeyCode.CONTROL, KeyCode.ENTER).release(KeyCode.ENTER, KeyCode.CONTROL);
+
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
+                () -> "Preview".equals(robot.lookup("#screen-title").queryAs(Label.class).getText()));
 
         assertThat(robot.lookup("#screen-title").queryAs(Label.class).getText()).isEqualTo("Preview");
         assertThat(robot.lookup("#sealed-secret-yaml-area").queryAs(TextArea.class).getText())
@@ -183,6 +192,17 @@ class AppControllerInteractionTest {
         @Override
         public ValidationResult validate(String sealedSecretYaml) {
             return new ValidationResult(true, "SealedSecret validation succeeded.", "validated");
+        }
+
+        @Override
+        public KubesealRuntimeStatus inspectStatus() {
+            return new KubesealRuntimeStatus(
+                    true,
+                    runtimeSettings.kubesealExecutable(),
+                    "kubeseal v0.fake",
+                    true,
+                    "kubeseal v0.fake ready at " + runtimeSettings.kubesealExecutable(),
+                    "kubeseal v0.fake");
         }
 
         @Override

@@ -19,6 +19,7 @@ public final class PreviewView {
     private final Label previewStatusLabel = new Label("Generate a Secret draft from the editor to populate this screen.");
     private final Button backToEditorButton = new Button("Back To Editor");
     private final Button validateButton = new Button("Validate SealedSecret");
+    private final Button cancelOperationButton = new Button("Cancel Running Action");
     private final Button copySecretButton = new Button("Copy Secret YAML");
     private final Button copySealedButton = new Button("Copy SealedSecret YAML");
     private final Button exportSecretButton = new Button("Export Secret YAML");
@@ -43,6 +44,10 @@ public final class PreviewView {
 
     public Button validateButton() {
         return validateButton;
+    }
+
+    public Button cancelOperationButton() {
+        return cancelOperationButton;
     }
 
     public Button copySecretButton() {
@@ -98,6 +103,20 @@ public final class PreviewView {
         copySealedButton.setDisable(!enabled);
         exportSecretButton.setDisable(!enabled);
         exportSealedButton.setDisable(!enabled);
+        cancelOperationButton.setDisable(true);
+    }
+
+    public void setBusy(boolean busy, String message) {
+        backToEditorButton.setDisable(busy);
+        validateButton.setDisable(busy);
+        copySecretButton.setDisable(busy);
+        copySealedButton.setDisable(busy);
+        exportSecretButton.setDisable(busy);
+        exportSealedButton.setDisable(busy);
+        cancelOperationButton.setDisable(!busy);
+        if (busy) {
+            previewStatusLabel.setText(message);
+        }
     }
 
     private void buildLayout() {
@@ -106,6 +125,7 @@ public final class PreviewView {
         previewStatusLabel.setId("preview-status-label");
         backToEditorButton.setId("back-to-editor-button");
         validateButton.setId("validate-sealed-secret-button");
+        cancelOperationButton.setId("cancel-preview-operation-button");
         copySecretButton.setId("copy-secret-yaml-button");
         copySealedButton.setId("copy-sealed-yaml-button");
         exportSecretButton.setId("export-secret-yaml-button");
@@ -115,6 +135,8 @@ public final class PreviewView {
         validationStatusLabel.setId("validation-status-label");
         technicalDetailsArea.setId("technical-details-area");
 
+        cancelOperationButton.setDisable(true);
+
         previewStatusLabel.setWrapText(true);
         validationStatusLabel.setWrapText(true);
 
@@ -122,6 +144,7 @@ public final class PreviewView {
                 8,
                 backToEditorButton,
                 validateButton,
+                cancelOperationButton,
                 copySecretButton,
                 copySealedButton,
                 exportSecretButton,
