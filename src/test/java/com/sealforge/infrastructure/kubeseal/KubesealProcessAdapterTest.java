@@ -21,7 +21,7 @@ class KubesealProcessAdapterTest {
     @EnabledOnOs({OS.LINUX, OS.MAC})
     void sealsViaStdinWithoutPlaintextTempFiles() throws IOException {
         Path fakeKubeseal = createFakeKubesealScript();
-        KubesealProcessAdapter adapter = new KubesealProcessAdapter(fakeKubeseal, new KubesealCommandFactory());
+        KubesealProcessAdapter adapter = new KubesealProcessAdapter(() -> fakeKubeseal, new KubesealCommandFactory());
 
         String sealedYaml = adapter.seal("apiVersion: v1\nkind: Secret\n", certificateReference(), SealingScope.STRICT);
 
@@ -32,7 +32,7 @@ class KubesealProcessAdapterTest {
     @EnabledOnOs({OS.LINUX, OS.MAC})
     void validatesUsingFakeKubeseal() throws IOException {
         Path fakeKubeseal = createFakeKubesealScript();
-        KubesealProcessAdapter adapter = new KubesealProcessAdapter(fakeKubeseal, new KubesealCommandFactory());
+        KubesealProcessAdapter adapter = new KubesealProcessAdapter(() -> fakeKubeseal, new KubesealCommandFactory());
 
         ValidationResult validationResult = adapter.validate("apiVersion: bitnami.com/v1alpha1\nkind: SealedSecret\n");
 

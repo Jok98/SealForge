@@ -17,14 +17,15 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 
 public final class KubesealProcessAdapter implements KubesealGateway {
 
-    private final Path executablePath;
+    private final Supplier<Path> executablePathSupplier;
     private final KubesealCommandFactory commandFactory;
 
-    public KubesealProcessAdapter(Path executablePath, KubesealCommandFactory commandFactory) {
-        this.executablePath = executablePath;
+    public KubesealProcessAdapter(Supplier<Path> executablePathSupplier, KubesealCommandFactory commandFactory) {
+        this.executablePathSupplier = executablePathSupplier;
         this.commandFactory = commandFactory;
     }
 
@@ -41,7 +42,7 @@ public final class KubesealProcessAdapter implements KubesealGateway {
         try {
             tempCertificate = writeTemporaryCertificate(certificateReference.pemContent());
             ProcessResult processResult = execute(
-                    commandFactory.buildSealCommand(executablePath, tempCertificate, scope),
+                    commandFactory.buildSealCommand(executablePath(), tempCertificate, scope),
                     plainSecretYaml);
             if (processResult.exitCode() != 0) {
                 throw new KubesealExecutionException(
@@ -66,7 +67,7 @@ public final class KubesealProcessAdapter implements KubesealGateway {
     public ValidationResult validate(String sealedSecretYaml) {
         try {
             ProcessResult processResult = execute(
-                    commandFactory.buildValidateCommand(executablePath),
+                    commandFactory.buildValidateCommand(executablePath()),
                     sealedSecretYaml);
 
             if (processResult.exitCode() == 0) {
@@ -91,7 +92,7 @@ public final class KubesealProcessAdapter implements KubesealGateway {
     @Override
     public boolean isAvailable() {
         try {
-            ProcessResult processResult = execute(commandFactory.buildVersionCommand(executablePath), "");
+            ProcessResult processResult = execute(commandFactory.buildVersionCommand(executablePath()), "");
             return processResult.exitCode() == 0;
         } catch (IOException | InterruptedException exception) {
             return false;
@@ -100,7 +101,7 @@ public final class KubesealProcessAdapter implements KubesealGateway {
 
     @Override
     public Path executablePath() {
-        return executablePath;
+        return executablePathSupplier.get();
     }
 
     private ProcessResult execute(List<String> command, String standardInput) throws IOException, InterruptedException {
@@ -162,4 +163,3 @@ public final class KubesealProcessAdapter implements KubesealGateway {
     private record ProcessResult(int exitCode, String standardOutput, String standardError) {
     }
 }
-
