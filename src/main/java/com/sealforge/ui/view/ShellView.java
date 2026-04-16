@@ -53,6 +53,9 @@ public final class ShellView {
 
     private void buildLayout(String applicationName) {
         root.setPadding(new Insets(18));
+        root.setId("app-shell");
+        screenTitleLabel.setId("screen-title");
+        screenSubtitleLabel.setId("screen-subtitle");
 
         VBox navigation = new VBox(10);
         navigation.setPadding(new Insets(16));
@@ -76,6 +79,7 @@ public final class ShellView {
             button.setAlignment(Pos.CENTER_LEFT);
             button.setPrefHeight(40);
             button.setStyle(INACTIVE_NAV_STYLE);
+            button.setId("nav-" + screen.name().toLowerCase().replace('_', '-'));
             navigationButtons.put(screen, button);
             navigation.getChildren().add(button);
         }

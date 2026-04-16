@@ -62,6 +62,10 @@ public final class HomeView {
 
     private void buildLayout() {
         root.setPadding(new Insets(6, 0, 0, 0));
+        root.setId("home-root");
+        startAuthoringButton.setId("home-new-secret-button");
+        openPreviewButton.setId("home-open-preview-button");
+        openSettingsButton.setId("home-open-settings-button");
 
         Label introTitleLabel = new Label("Start a local Sealed Secrets authoring session.");
         introTitleLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
@@ -81,6 +85,7 @@ public final class HomeView {
                 metadataRow("Certificate", certificateStatusLabel),
                 metadataRow("Preview", previewStatusLabel),
                 metadataRow("Default Secret Type", defaultSecretTypeLabel));
+        defaultSecretTypeLabel.setId("home-default-secret-type-label");
 
         VBox guidanceCard = card(
                 "Security reminders",

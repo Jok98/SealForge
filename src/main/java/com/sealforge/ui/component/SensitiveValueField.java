@@ -39,6 +39,13 @@ public final class SensitiveValueField extends HBox {
         getChildren().addAll(inputHolder, revealButton);
     }
 
+    public void applyIdPrefix(String id) {
+        setId(id);
+        maskedField.setId(id + "-masked");
+        plainField.setId(id + "-plain");
+        revealButton.setId(id + "-toggle");
+    }
+
     public StringProperty textProperty() {
         return text;
     }
@@ -56,4 +63,3 @@ public final class SensitiveValueField extends HBox {
         revealButton.setText(revealed ? "Hide" : "Show");
     }
 }
-

@@ -16,8 +16,12 @@ public final class SecretEntryRowView extends HBox {
     public SecretEntryRowView(SecretEntryRowModel model, Runnable removeAction) {
         setSpacing(8);
         setAlignment(Pos.CENTER_LEFT);
+        setId("secret-entry-row");
 
         keyField.setPromptText("Key");
+        keyField.setId("secret-entry-key-field");
+        valueField.applyIdPrefix("secret-entry-value-field");
+        removeButton.setId("remove-entry-button");
         keyField.textProperty().bindBidirectional(model.keyProperty());
         valueField.textProperty().bindBidirectional(model.valueProperty());
         removeButton.setOnAction(event -> removeAction.run());
@@ -30,5 +34,8 @@ public final class SecretEntryRowView extends HBox {
     public void clearSensitiveValue() {
         valueField.clear();
     }
-}
 
+    public TextField keyField() {
+        return keyField;
+    }
+}

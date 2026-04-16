@@ -12,12 +12,18 @@ import javafx.scene.layout.VBox;
 
 public final class SettingsView {
 
+    private static final String ERROR_LABEL_STYLE = "-fx-text-fill: #b42318; -fx-font-size: 12px;";
+    private static final String INFO_LABEL_STYLE = "-fx-text-fill: #475467;";
+    private static final String ERROR_FIELD_STYLE = "-fx-border-color: #d92d20; -fx-border-radius: 6px;";
+
     private final ScrollPane root = new ScrollPane();
     private final TextField kubesealExecutableField = new TextField();
     private final Button browseKubesealButton = new Button("Browse");
     private final TextField defaultSecretTypeField = new TextField();
     private final Label kubesealStatusLabel = new Label("-");
     private final Label saveStatusLabel = new Label("Settings are non-sensitive and saved locally.");
+    private final Label kubesealExecutableErrorLabel = validationLabel("kubeseal-executable-error-label");
+    private final Label defaultSecretTypeErrorLabel = validationLabel("default-secret-type-error-label");
     private final Button saveButton = new Button("Save Settings");
     private final Button restoreDefaultsButton = new Button("Restore Defaults");
 
@@ -57,9 +63,46 @@ public final class SettingsView {
 
     public void setSaveStatus(String message) {
         saveStatusLabel.setText(message);
+        saveStatusLabel.setStyle(INFO_LABEL_STYLE);
+    }
+
+    public void setSaveError(String message) {
+        saveStatusLabel.setText(message);
+        saveStatusLabel.setStyle(ERROR_LABEL_STYLE);
+    }
+
+    public void clearInlineValidation() {
+        setValidationState(kubesealExecutableErrorLabel, null, kubesealExecutableField);
+        setValidationState(defaultSecretTypeErrorLabel, null, defaultSecretTypeField);
+        setSaveStatus("Settings are non-sensitive and saved locally.");
+    }
+
+    public void clearKubesealExecutableError() {
+        setValidationState(kubesealExecutableErrorLabel, null, kubesealExecutableField);
+    }
+
+    public void clearDefaultSecretTypeError() {
+        setValidationState(defaultSecretTypeErrorLabel, null, defaultSecretTypeField);
+    }
+
+    public void showKubesealExecutableError(String message) {
+        setValidationState(kubesealExecutableErrorLabel, message, kubesealExecutableField);
+    }
+
+    public void showDefaultSecretTypeError(String message) {
+        setValidationState(defaultSecretTypeErrorLabel, message, defaultSecretTypeField);
     }
 
     private void buildLayout() {
+        root.setId("settings-root");
+        kubesealExecutableField.setId("kubeseal-executable-field");
+        browseKubesealButton.setId("browse-kubeseal-button");
+        defaultSecretTypeField.setId("default-secret-type-field");
+        kubesealStatusLabel.setId("settings-kubeseal-status-label");
+        saveStatusLabel.setId("settings-save-status-label");
+        saveButton.setId("save-settings-button");
+        restoreDefaultsButton.setId("restore-default-settings-button");
+
         kubesealExecutableField.setPromptText("kubeseal");
         defaultSecretTypeField.setPromptText("Opaque");
 
@@ -68,12 +111,12 @@ public final class SettingsView {
                 section(
                         "Execution",
                         wrappedLabel("Configure the kubeseal executable path. Changes apply immediately to future generate and validate operations."),
-                        fieldRow("kubeseal Executable", kubesealExecutableField, browseKubesealButton),
+                        fieldRow("kubeseal Executable", kubesealExecutableField, kubesealExecutableErrorLabel, browseKubesealButton),
                         metadataRow("Current Status", kubesealStatusLabel)),
                 section(
                         "Defaults",
                         wrappedLabel("The default Secret type is applied when you create a new draft or reset the current one."),
-                        fieldRow("Default Secret Type", defaultSecretTypeField)),
+                        fieldRow("Default Secret Type", defaultSecretTypeField, defaultSecretTypeErrorLabel)),
                 section(
                         "Persistence",
                         wrappedLabel("Only non-sensitive settings are stored locally. Secret values and generated plaintext are not persisted automatically."),
@@ -96,13 +139,13 @@ public final class SettingsView {
         return container;
     }
 
-    private HBox fieldRow(String label, TextField textField, javafx.scene.Node... trailingNodes) {
+    private VBox fieldRow(String label, TextField textField, Label errorLabel, javafx.scene.Node... trailingNodes) {
         Label labelNode = new Label(label);
         labelNode.setMinWidth(150);
         HBox row = new HBox(12, labelNode, textField);
         HBox.setHgrow(textField, Priority.ALWAYS);
         row.getChildren().addAll(trailingNodes);
-        return row;
+        return new VBox(4, row, errorLabel);
     }
 
     private HBox metadataRow(String label, Label valueLabel) {
@@ -118,5 +161,18 @@ public final class SettingsView {
         Label label = new Label(text);
         label.setWrapText(true);
         return label;
+    }
+
+    private Label validationLabel(String id) {
+        Label label = new Label();
+        label.setId(id);
+        label.setWrapText(true);
+        label.setStyle(ERROR_LABEL_STYLE);
+        return label;
+    }
+
+    private void setValidationState(Label label, String message, TextField field) {
+        label.setText(message == null ? "" : message);
+        field.setStyle(message == null || message.isBlank() ? "" : ERROR_FIELD_STYLE);
     }
 }

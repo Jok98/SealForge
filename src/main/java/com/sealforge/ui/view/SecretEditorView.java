@@ -17,6 +17,10 @@ import javafx.scene.layout.VBox;
 
 public final class SecretEditorView {
 
+    private static final String ERROR_LABEL_STYLE = "-fx-text-fill: #b42318; -fx-font-size: 12px;";
+    private static final String INFO_LABEL_STYLE = "-fx-text-fill: #475467;";
+    private static final String ERROR_FIELD_STYLE = "-fx-border-color: #d92d20; -fx-border-radius: 6px;";
+
     private final ScrollPane root = new ScrollPane();
 
     private final TextArea certificateTextArea = new TextArea();
@@ -33,6 +37,11 @@ public final class SecretEditorView {
     private final TextField secretTypeField = new TextField();
     private final ComboBox<SealingScope> scopeComboBox = new ComboBox<>();
     private final Label scopeDescriptionLabel = new Label();
+    private final Label certificateErrorLabel = validationLabel("certificate-error-label");
+    private final Label secretNameErrorLabel = validationLabel("secret-name-error-label");
+    private final Label namespaceErrorLabel = validationLabel("namespace-error-label");
+    private final Label secretTypeErrorLabel = validationLabel("secret-type-error-label");
+    private final Label entriesErrorLabel = validationLabel("entries-error-label");
 
     private final VBox entryRowsContainer = new VBox(8);
     private final Button addEntryButton = new Button("Add Entry");
@@ -118,9 +127,78 @@ public final class SecretEditorView {
 
     public void setEditorStatus(String message) {
         editorStatusLabel.setText(message);
+        editorStatusLabel.setStyle(INFO_LABEL_STYLE);
+    }
+
+    public void setEditorError(String message) {
+        editorStatusLabel.setText(message);
+        editorStatusLabel.setStyle(ERROR_LABEL_STYLE);
+    }
+
+    public void clearInlineValidation() {
+        setValidationState(certificateErrorLabel, null, certificateTextArea);
+        setValidationState(secretNameErrorLabel, null, secretNameField);
+        setValidationState(namespaceErrorLabel, null, namespaceField);
+        setValidationState(secretTypeErrorLabel, null, secretTypeField);
+        setValidationState(entriesErrorLabel, null, entryRowsContainer);
+        setEditorStatus("Generate a preview to open the validation and export screen.");
+    }
+
+    public void clearCertificateError() {
+        setValidationState(certificateErrorLabel, null, certificateTextArea);
+    }
+
+    public void clearSecretNameError() {
+        setValidationState(secretNameErrorLabel, null, secretNameField);
+    }
+
+    public void clearNamespaceError() {
+        setValidationState(namespaceErrorLabel, null, namespaceField);
+    }
+
+    public void clearSecretTypeError() {
+        setValidationState(secretTypeErrorLabel, null, secretTypeField);
+    }
+
+    public void clearEntriesError() {
+        setValidationState(entriesErrorLabel, null, entryRowsContainer);
+    }
+
+    public void showCertificateError(String message) {
+        setValidationState(certificateErrorLabel, message, certificateTextArea);
+    }
+
+    public void showSecretNameError(String message) {
+        setValidationState(secretNameErrorLabel, message, secretNameField);
+    }
+
+    public void showNamespaceError(String message) {
+        setValidationState(namespaceErrorLabel, message, namespaceField);
+    }
+
+    public void showSecretTypeError(String message) {
+        setValidationState(secretTypeErrorLabel, message, secretTypeField);
+    }
+
+    public void showEntriesError(String message) {
+        setValidationState(entriesErrorLabel, message, entryRowsContainer);
     }
 
     private void buildLayout() {
+        root.setId("secret-editor-root");
+        certificateTextArea.setId("certificate-text-area");
+        inspectCertificateButton.setId("inspect-certificate-button");
+        loadCertificateFileButton.setId("load-certificate-file-button");
+        secretNameField.setId("secret-name-field");
+        namespaceField.setId("namespace-field");
+        secretTypeField.setId("secret-type-field");
+        scopeComboBox.setId("scope-combo-box");
+        entryRowsContainer.setId("entry-rows-container");
+        addEntryButton.setId("add-entry-button");
+        generateButton.setId("generate-preview-button");
+        resetButton.setId("reset-draft-button");
+        editorStatusLabel.setId("editor-status-label");
+
         certificateTextArea.setPromptText("Paste a PEM encoded Sealed Secrets public certificate.");
         certificateTextArea.setPrefRowCount(10);
 
@@ -139,6 +217,7 @@ public final class SecretEditorView {
                         "Certificate",
                         wrappedLabel("Certificates are public cluster material. Secret entry values are not."),
                         certificateTextArea,
+                        certificateErrorLabel,
                         new HBox(8, inspectCertificateButton, loadCertificateFileButton),
                         metadataRow("Status", certificateStatusLabel),
                         metadataRow("Fingerprint", certificateFingerprintLabel),
@@ -146,9 +225,9 @@ public final class SecretEditorView {
                         metadataRow("Issuer", certificateIssuerLabel)),
                 section(
                         "Secret Metadata",
-                        fieldRow("Secret Name", secretNameField),
-                        fieldRow("Namespace", namespaceField),
-                        fieldRow("Secret Type", secretTypeField),
+                        fieldRow("Secret Name", secretNameField, secretNameErrorLabel),
+                        fieldRow("Namespace", namespaceField, namespaceErrorLabel),
+                        fieldRow("Secret Type", secretTypeField, secretTypeErrorLabel),
                         fieldRow("Sealing Scope", scopeComboBox),
                         metadataRow("Scope Notes", scopeDescriptionLabel),
                         metadataRow("kubeseal", kubesealStatusLabel)),
@@ -156,6 +235,7 @@ public final class SecretEditorView {
                         "Secret Entries",
                         wrappedLabel("Duplicate keys are rejected. Secret values are masked by default."),
                         entryRowsContainer,
+                        entriesErrorLabel,
                         addEntryButton),
                 section(
                         "Actions",
@@ -176,6 +256,15 @@ public final class SecretEditorView {
         container.getChildren().addAll(children);
         container.setPadding(new Insets(16));
         container.setStyle("-fx-background-color: #f8fbff; -fx-background-radius: 16px; -fx-border-color: #d7e2f0; -fx-border-radius: 16px;");
+        return container;
+    }
+
+    private VBox fieldRow(String label, javafx.scene.Node field, Label errorLabel) {
+        Label labelNode = new Label(label);
+        labelNode.setMinWidth(130);
+        HBox row = new HBox(12, labelNode, field);
+        HBox.setHgrow(field, Priority.ALWAYS);
+        VBox container = new VBox(4, row, errorLabel);
         return container;
     }
 
@@ -201,5 +290,18 @@ public final class SecretEditorView {
         Label label = new Label(text);
         label.setWrapText(true);
         return label;
+    }
+
+    private Label validationLabel(String id) {
+        Label label = new Label();
+        label.setId(id);
+        label.setWrapText(true);
+        label.setStyle(ERROR_LABEL_STYLE);
+        return label;
+    }
+
+    private void setValidationState(Label label, String message, javafx.scene.Node target) {
+        label.setText(message == null ? "" : message);
+        target.setStyle(message == null || message.isBlank() ? "" : ERROR_FIELD_STYLE);
     }
 }

@@ -7,7 +7,7 @@ import com.sealforge.application.dto.SecretEntryInput;
 import com.sealforge.config.ApplicationSettings;
 import com.sealforge.domain.enumtype.CertificateSourceType;
 import com.sealforge.domain.exception.SealForgeException;
-import com.sealforge.domain.exception.ValidationException;
+import com.sealforge.domain.exception.UserInputException;
 import com.sealforge.domain.model.CertificateReference;
 import com.sealforge.domain.model.GeneratedYaml;
 import com.sealforge.domain.model.SecretDraft;
@@ -24,8 +24,12 @@ import com.sealforge.ui.view.SecretEditorView;
 import com.sealforge.ui.view.SettingsView;
 import com.sealforge.ui.view.ShellView;
 import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
 
@@ -50,6 +54,7 @@ public final class AppController {
 
     private CertificateReference loadedCertificate;
     private GeneratedYaml generatedYaml;
+    private Scene shortcutsScene;
 
     public AppController(AppContext appContext) {
         this.appContext = appContext;
@@ -69,6 +74,7 @@ public final class AppController {
         updateKubesealStatus();
         updateHomeSummary();
         updatePreviewState();
+        registerKeyboardShortcuts();
         navigate(AppScreen.HOME);
         return shellView.root();
     }
@@ -82,17 +88,23 @@ public final class AppController {
 
         formModel.scopeProperty().addListener((observable, oldValue, newValue) -> secretEditorView.setScopeDescription(newValue));
         formModel.certificatePemProperty().addListener((observable, oldValue, newValue) -> {
+            secretEditorView.clearCertificateError();
             if (loadedCertificate != null && !newValue.strip().equals(loadedCertificate.pemContent().strip())) {
                 loadedCertificate = null;
                 secretEditorView.clearCertificateDetails();
                 updateHomeSummary();
             }
         });
+        formModel.secretNameProperty().addListener((observable, oldValue, newValue) -> secretEditorView.clearSecretNameError());
+        formModel.namespaceProperty().addListener((observable, oldValue, newValue) -> secretEditorView.clearNamespaceError());
+        formModel.secretTypeProperty().addListener((observable, oldValue, newValue) -> secretEditorView.clearSecretTypeError());
     }
 
     private void bindSettingsForm() {
         settingsView.kubesealExecutableField().textProperty().bindBidirectional(settingsFormModel.kubesealExecutableProperty());
         settingsView.defaultSecretTypeField().textProperty().bindBidirectional(settingsFormModel.defaultSecretTypeProperty());
+        settingsFormModel.kubesealExecutableProperty().addListener((observable, oldValue, newValue) -> settingsView.clearKubesealExecutableError());
+        settingsFormModel.defaultSecretTypeProperty().addListener((observable, oldValue, newValue) -> settingsView.clearDefaultSecretTypeError());
     }
 
     private void registerNavigation() {
@@ -162,11 +174,11 @@ public final class AppController {
 
     private void inspectCertificate() {
         try {
-            loadedCertificate = appContext.loadCertificateUseCase().execute(new CertificateLoadRequest(
+            secretEditorView.clearInlineValidation();
+            loadedCertificate = loadCertificate(
                     CertificateSourceType.PASTE,
                     "Pasted certificate",
-                    formModel.certificatePemProperty().get()));
-            secretEditorView.setCertificateDetails(loadedCertificate);
+                    formModel.certificatePemProperty().get());
             secretEditorView.setEditorStatus("Certificate inspected successfully. Continue filling the draft.");
             previewView.setTechnicalDetails("");
             updateHomeSummary();
@@ -192,13 +204,13 @@ public final class AppController {
         }
 
         try {
+            secretEditorView.clearInlineValidation();
             String pemContent = Files.readString(selectedPath);
             formModel.certificatePemProperty().set(pemContent);
-            loadedCertificate = appContext.loadCertificateUseCase().execute(new CertificateLoadRequest(
+            loadedCertificate = loadCertificate(
                     CertificateSourceType.FILE,
                     selectedPath.toString(),
-                    pemContent));
-            secretEditorView.setCertificateDetails(loadedCertificate);
+                    pemContent);
             secretEditorView.setEditorStatus("Certificate loaded from file.");
             previewView.setTechnicalDetails("");
             updateHomeSummary();
@@ -212,6 +224,7 @@ public final class AppController {
 
     private void generateYaml() {
         try {
+            secretEditorView.clearInlineValidation();
             ensureCertificateLoaded();
             SecretDraft draft = buildDraft();
             String plainSecretYaml = appContext.generateYamlUseCase().execute(draft);
@@ -256,6 +269,7 @@ public final class AppController {
 
     private void saveSettings() {
         try {
+            settingsView.clearInlineValidation();
             ApplicationSettings savedSettings = appContext.saveSettingsUseCase().execute(new ApplicationSettings(
                     settingsFormModel.kubesealExecutableProperty().get(),
                     settingsFormModel.defaultSecretTypeProperty().get()));
@@ -316,18 +330,31 @@ public final class AppController {
         return appContext.createSecretDraftUseCase().execute(draftInput);
     }
 
+    private CertificateReference loadCertificate(
+            CertificateSourceType sourceType,
+            String sourceDescription,
+            String pemContent) {
+        CertificateReference certificateReference = appContext.loadCertificateUseCase().execute(new CertificateLoadRequest(
+                sourceType,
+                sourceDescription,
+                pemContent));
+        secretEditorView.setCertificateDetails(certificateReference);
+        return certificateReference;
+    }
+
     private void ensureCertificateLoaded() {
         if (loadedCertificate == null) {
-            inspectCertificate();
-            if (loadedCertificate == null) {
-                throw new ValidationException("A public certificate must be loaded before sealing.");
-            }
+            loadedCertificate = loadCertificate(
+                    CertificateSourceType.PASTE,
+                    "Pasted certificate",
+                    formModel.certificatePemProperty().get());
         }
     }
 
     private void addEntryRow(SecretEntryRowModel rowModel) {
         formModel.entries().add(rowModel);
         SecretEntryRowView rowView = new SecretEntryRowView(rowModel, () -> removeEntryRow(rowModel));
+        rowModel.keyProperty().addListener((observable, oldValue, newValue) -> secretEditorView.clearEntriesError());
         entryRowViews.add(rowView);
         secretEditorView.entryRowsContainer().getChildren().add(rowView);
     }
@@ -339,6 +366,7 @@ public final class AppController {
             SecretEntryRowView rowView = entryRowViews.remove(index);
             rowView.clearSensitiveValue();
             secretEditorView.entryRowsContainer().getChildren().remove(rowView);
+            secretEditorView.clearEntriesError();
         }
     }
 
@@ -392,6 +420,40 @@ public final class AppController {
         previewView.setActionsEnabled(previewAvailable);
     }
 
+    private void registerKeyboardShortcuts() {
+        shellView.root().sceneProperty().addListener((observable, oldScene, newScene) -> installKeyboardShortcuts(newScene));
+        installKeyboardShortcuts(shellView.root().getScene());
+    }
+
+    private void installKeyboardShortcuts(Scene scene) {
+        if (scene == null || scene == shortcutsScene) {
+            return;
+        }
+
+        shortcutsScene = scene;
+        scene.getAccelerators().put(shortcut(KeyCode.DIGIT1), () -> navigate(AppScreen.HOME));
+        scene.getAccelerators().put(shortcut(KeyCode.DIGIT2), () -> navigate(AppScreen.SECRET_EDITOR));
+        scene.getAccelerators().put(shortcut(KeyCode.DIGIT3), () -> navigate(AppScreen.PREVIEW));
+        scene.getAccelerators().put(shortcut(KeyCode.DIGIT4), () -> navigate(AppScreen.SETTINGS));
+        scene.getAccelerators().put(new KeyCodeCombination(KeyCode.F1), () -> navigate(AppScreen.ABOUT));
+        scene.getAccelerators().put(shortcut(KeyCode.ENTER), this::generateYaml);
+        scene.getAccelerators().put(shortcutShift(KeyCode.R), () -> {
+            if (confirmReset()) {
+                applyResetState();
+                shellView.setFooterMessage("Draft cleared. Secret values were removed from the active UI state.");
+            }
+        });
+        scene.getAccelerators().put(shortcutShift(KeyCode.V), this::validateSealedSecret);
+    }
+
+    private KeyCombination shortcut(KeyCode keyCode) {
+        return new KeyCodeCombination(keyCode, KeyCombination.SHORTCUT_DOWN);
+    }
+
+    private KeyCombination shortcutShift(KeyCode keyCode) {
+        return new KeyCodeCombination(keyCode, KeyCombination.SHORTCUT_DOWN, KeyCombination.SHIFT_DOWN);
+    }
+
     private boolean confirmReset() {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
                 "Reset the form and clear all in-memory secret values?",
@@ -416,17 +478,74 @@ public final class AppController {
     private void handleFailure(Exception exception) {
         if (exception instanceof SealForgeException sealForgeException) {
             previewView.setTechnicalDetails(sealForgeException.technicalDetails());
-            settingsView.setSaveStatus(sealForgeException.userMessage());
             shellView.setFooterMessage(sealForgeException.userMessage());
+            if (sealForgeException instanceof UserInputException) {
+                showInlineUserInputError(sealForgeException.userMessage());
+                return;
+            }
+            settingsView.setSaveError(sealForgeException.userMessage());
+            previewView.setPreviewStatus(sealForgeException.userMessage());
+            secretEditorView.setEditorError(sealForgeException.userMessage());
             showError(sealForgeException.userMessage());
             return;
         }
 
         String technicalDetails = exception.getMessage() == null ? exception.toString() : exception.getMessage();
         previewView.setTechnicalDetails(technicalDetails);
-        settingsView.setSaveStatus("The requested action could not be completed.");
+        settingsView.setSaveError("The requested action could not be completed.");
+        previewView.setPreviewStatus("The requested action could not be completed.");
+        secretEditorView.setEditorError("The requested action could not be completed.");
         shellView.setFooterMessage("The requested action could not be completed.");
         showError("The requested action could not be completed.");
+    }
+
+    private void showInlineUserInputError(String message) {
+        if (message.contains("certificate")) {
+            navigate(AppScreen.SECRET_EDITOR);
+            secretEditorView.showCertificateError(message);
+            secretEditorView.setEditorError(message);
+            return;
+        }
+        if (message.startsWith("Secret name")) {
+            navigate(AppScreen.SECRET_EDITOR);
+            secretEditorView.showSecretNameError(message);
+            secretEditorView.setEditorError(message);
+            return;
+        }
+        if (message.startsWith("Namespace")) {
+            navigate(AppScreen.SECRET_EDITOR);
+            secretEditorView.showNamespaceError(message);
+            secretEditorView.setEditorError(message);
+            return;
+        }
+        if (message.startsWith("Secret type")) {
+            navigate(AppScreen.SECRET_EDITOR);
+            secretEditorView.showSecretTypeError(message);
+            secretEditorView.setEditorError(message);
+            return;
+        }
+        if (message.contains("entry")) {
+            navigate(AppScreen.SECRET_EDITOR);
+            secretEditorView.showEntriesError(message);
+            secretEditorView.setEditorError(message);
+            return;
+        }
+        if (message.contains("Default secret type")) {
+            navigate(AppScreen.SETTINGS);
+            settingsView.showDefaultSecretTypeError(message);
+            settingsView.setSaveError(message);
+            return;
+        }
+        if (message.contains("SealedSecret")) {
+            navigate(AppScreen.PREVIEW);
+            previewView.setValidationResult(new ValidationResult(false, message, ""));
+            previewView.setPreviewStatus(message);
+            return;
+        }
+
+        secretEditorView.setEditorError(message);
+        settingsView.setSaveError(message);
+        previewView.setPreviewStatus(message);
     }
 
     private void showError(String message) {

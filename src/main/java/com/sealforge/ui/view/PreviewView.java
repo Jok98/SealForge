@@ -79,6 +79,10 @@ public final class PreviewView {
         setActionsEnabled(false);
     }
 
+    public void setPreviewStatus(String message) {
+        previewStatusLabel.setText(message);
+    }
+
     public void setValidationResult(ValidationResult validationResult) {
         validationStatusLabel.setText(validationResult.message());
         technicalDetailsArea.setText(validationResult.details() == null ? "" : validationResult.details());
@@ -98,6 +102,18 @@ public final class PreviewView {
 
     private void buildLayout() {
         root.setPadding(new Insets(6, 0, 0, 0));
+        root.setId("preview-root");
+        previewStatusLabel.setId("preview-status-label");
+        backToEditorButton.setId("back-to-editor-button");
+        validateButton.setId("validate-sealed-secret-button");
+        copySecretButton.setId("copy-secret-yaml-button");
+        copySealedButton.setId("copy-sealed-yaml-button");
+        exportSecretButton.setId("export-secret-yaml-button");
+        exportSealedButton.setId("export-sealed-yaml-button");
+        secretYamlArea.setId("secret-yaml-area");
+        sealedSecretYamlArea.setId("sealed-secret-yaml-area");
+        validationStatusLabel.setId("validation-status-label");
+        technicalDetailsArea.setId("technical-details-area");
 
         previewStatusLabel.setWrapText(true);
         validationStatusLabel.setWrapText(true);
