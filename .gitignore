@@ -2,10 +2,10 @@
 .mvn/
 .settings/
 target/
+dist/
 out/
 *.iml
 *.log
 *.jfr
 *.hprof
 .DS_Store
-

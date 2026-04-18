@@ -60,7 +60,27 @@ mvn javafx:run
 Build a runtime image:
 
 ```bash
-mvn javafx:jlink
+mvn -DskipTests clean package javafx:jlink
+```
+
+Build a native installer locally:
+
+- Linux or macOS:
+
+```bash
+SEALFORGE_PACKAGE_VERSION=0.1.0 ./scripts/release/build-installer.sh
+```
+
+If Linux installer tooling is unavailable locally, you can still validate the `jpackage` path with:
+
+```bash
+SEALFORGE_LINUX_PACKAGE_TYPE=app-image SEALFORGE_PACKAGE_VERSION=0.1.0 ./scripts/release/build-installer.sh
+```
+
+- Windows:
+
+```powershell
+pwsh -File .\scripts\release\build-installer.ps1 -PackageVersion 0.1.0
 ```
 
 ## Packaging Strategy
@@ -69,7 +89,13 @@ mvn javafx:jlink
 - `jpackage` for native installers in CI release workflows
 - GitHub Actions matrix builds for Linux, Windows, and macOS
 
-See [docs/technical-specification.md](docs/technical-specification.md) for the full architecture and release proposal.
+The project now includes:
+
+- a modular runtime image build via `mvn javafx:jlink`
+- cross-platform `jpackage` scripts under `scripts/release/`
+- a GitHub Actions release workflow at `.github/workflows/release.yml`
+
+See [docs/technical-specification.md](docs/technical-specification.md) for the full architecture and [docs/release-build.md](docs/release-build.md) for release packaging details.
 
 ## Open Source Notes
 
@@ -79,4 +105,3 @@ See [docs/technical-specification.md](docs/technical-specification.md) for the f
 ## Screenshots
 
 UI screenshots will be added under `docs/images/` as the application matures.
-

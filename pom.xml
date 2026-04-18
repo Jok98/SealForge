@@ -5,12 +5,13 @@
 
     <groupId>com.sealforge</groupId>
     <artifactId>sealforge</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>${revision}</version>
     <name>SealForge</name>
     <description>Local-first JavaFX desktop authoring tool for Kubernetes Sealed Secrets.</description>
     <packaging>jar</packaging>
 
     <properties>
+        <revision>0.1.0-SNAPSHOT</revision>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>21</maven.compiler.release>
         <javafx.version>21.0.4</javafx.version>
@@ -19,7 +20,8 @@
         <assertj.version>3.27.2</assertj.version>
         <testfx.version>4.0.18</testfx.version>
         <monocle.version>1.0.1</monocle.version>
-        <main.class>com.sealforge.app.MainApplication</main.class>
+        <app.module>com.sealforge</app.module>
+        <app.main.class>com.sealforge.app.AppLauncher</app.main.class>
     </properties>
 
     <dependencies>
@@ -108,16 +110,36 @@
                 </configuration>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.8.1</version>
+                <executions>
+                    <execution>
+                        <id>copy-jpackage-runtime-dependencies</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <includeScope>runtime</includeScope>
+                            <outputDirectory>${project.build.directory}/jpackage-input</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
                 <version>0.0.8</version>
                 <configuration>
-                    <mainClass>${main.class}</mainClass>
+                    <mainClass>${app.module}/${app.main.class}</mainClass>
                     <launcher>sealforge</launcher>
                     <stripDebug>true</stripDebug>
                     <noHeaderFiles>true</noHeaderFiles>
                     <noManPages>true</noManPages>
+                    <ignoreSigningInformation>true</ignoreSigningInformation>
                     <jlinkImageName>sealforge</jlinkImageName>
+                    <jlinkZipName>sealforge-${project.version}</jlinkZipName>
                 </configuration>
             </plugin>
         </plugins>
