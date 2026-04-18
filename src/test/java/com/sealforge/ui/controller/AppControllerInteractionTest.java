@@ -118,17 +118,7 @@ class AppControllerInteractionTest {
 
     @Test
     void generateShortcutOpensPreviewWithGeneratedYaml(FxRobot robot) throws Exception {
-        robot.clickOn("#nav-secret-editor");
-        replaceText(robot, "#certificate-text-area", VALID_CERTIFICATE_PEM);
-        replaceText(robot, "#secret-name-field", "demo-secret");
-        replaceText(robot, "#namespace-field", "team-a");
-        replaceText(robot, "#secret-entry-key-field", "token");
-        replaceText(robot, "#secret-entry-value-field-masked", "super-secret");
-
-        robot.press(KeyCode.CONTROL, KeyCode.ENTER).release(KeyCode.ENTER, KeyCode.CONTROL);
-
-        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
-                () -> "Preview".equals(robot.lookup("#screen-title").queryAs(Label.class).getText()));
+        generatePreview(robot);
 
         assertThat(robot.lookup("#screen-title").queryAs(Label.class).getText()).isEqualTo("Preview");
         assertThat(robot.lookup("#sealed-secret-yaml-area").queryAs(TextArea.class).getText())
@@ -147,6 +137,20 @@ class AppControllerInteractionTest {
 
     private static void replaceText(FxRobot robot, String query, String text) {
         robot.interact(() -> robot.lookup(query).queryAs(TextInputControl.class).setText(text));
+    }
+
+    private static void generatePreview(FxRobot robot) throws Exception {
+        robot.clickOn("#nav-secret-editor");
+        replaceText(robot, "#certificate-text-area", VALID_CERTIFICATE_PEM);
+        replaceText(robot, "#secret-name-field", "demo-secret");
+        replaceText(robot, "#namespace-field", "team-a");
+        replaceText(robot, "#secret-entry-key-field", "token");
+        replaceText(robot, "#secret-entry-value-field-masked", "super-secret");
+
+        robot.press(KeyCode.CONTROL, KeyCode.ENTER).release(KeyCode.ENTER, KeyCode.CONTROL);
+
+        WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS,
+                () -> "Preview".equals(robot.lookup("#screen-title").queryAs(Label.class).getText()));
     }
 
     private static final class InMemoryApplicationSettingsStore implements ApplicationSettingsStore {

@@ -60,6 +60,7 @@ public final class AppController {
     private GeneratedYaml generatedYaml;
     private Scene shortcutsScene;
     private Task<?> activeTask;
+    private boolean shuttingDown;
 
     public AppController(AppContext appContext) {
         this.appContext = appContext;
@@ -142,18 +143,10 @@ public final class AppController {
         previewView.backToEditorButton().setOnAction(event -> navigate(AppScreen.SECRET_EDITOR));
         previewView.validateButton().setOnAction(event -> validateSealedSecret());
         previewView.cancelOperationButton().setOnAction(event -> cancelActiveOperation());
-        previewView.copySecretButton().setOnAction(event -> copyYaml(
-                generatedYaml == null ? "" : generatedYaml.plainSecretYaml(),
-                "Plain Secret YAML copied to the clipboard."));
-        previewView.copySealedButton().setOnAction(event -> copyYaml(
-                generatedYaml == null ? "" : generatedYaml.sealedSecretYaml(),
-                "SealedSecret YAML copied to the clipboard."));
-        previewView.exportSecretButton().setOnAction(event -> exportYaml(
-                generatedYaml == null ? "" : generatedYaml.plainSecretYaml(),
-                "secret.yaml"));
-        previewView.exportSealedButton().setOnAction(event -> exportYaml(
-                generatedYaml == null ? "" : generatedYaml.sealedSecretYaml(),
-                "sealed-secret.yaml"));
+        previewView.copySecretButton().setOnAction(event -> copyPlainSecretYaml());
+        previewView.copySealedButton().setOnAction(event -> copySealedSecretYaml());
+        previewView.exportSecretButton().setOnAction(event -> exportPlainSecretYaml());
+        previewView.exportSealedButton().setOnAction(event -> exportSealedSecretYaml());
     }
 
     private void registerSettingsActions() {
@@ -322,6 +315,46 @@ public final class AppController {
         }
     }
 
+    private void copyPlainSecretYaml() {
+        if (!hasPlaintextPreview()) {
+            return;
+        }
+        if (!confirmPlaintextAction(
+                "Copy plaintext Secret YAML",
+                "This will place unsealed secret values on the system clipboard.")) {
+            return;
+        }
+        copyYaml(
+                generatedYaml.plainSecretYaml(),
+                "Plain Secret YAML copied to the clipboard. Clear it when you no longer need plaintext.");
+    }
+
+    private void copySealedSecretYaml() {
+        if (generatedYaml == null || generatedYaml.sealedSecretYaml().isBlank()) {
+            return;
+        }
+        copyYaml(generatedYaml.sealedSecretYaml(), "SealedSecret YAML copied to the clipboard.");
+    }
+
+    private void exportPlainSecretYaml() {
+        if (!hasPlaintextPreview()) {
+            return;
+        }
+        if (!confirmPlaintextAction(
+                "Export plaintext Secret YAML",
+                "This will write unsealed secret values to a file on disk.")) {
+            return;
+        }
+        exportYaml(generatedYaml.plainSecretYaml(), "secret.yaml");
+    }
+
+    private void exportSealedSecretYaml() {
+        if (generatedYaml == null || generatedYaml.sealedSecretYaml().isBlank()) {
+            return;
+        }
+        exportYaml(generatedYaml.sealedSecretYaml(), "sealed-secret.yaml");
+    }
+
     private void exportYaml(String yaml, String defaultFileName) {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Export YAML");
@@ -411,31 +444,36 @@ public final class AppController {
 
     private void applyResetState() {
         SecretDraftInput resetState = appContext.resetDraftUseCase().execute(appContext.runtimeSettings().defaultSecretType());
-        formModel.certificatePemProperty().set("");
-        formModel.secretNameProperty().set(resetState.name());
-        formModel.namespaceProperty().set(resetState.namespace());
-        formModel.secretTypeProperty().set(resetState.type());
-        formModel.scopeProperty().set(resetState.scope());
-        loadedCertificate = null;
-        generatedYaml = null;
-
-        secretEditorView.clearCertificateDetails();
-        secretEditorView.setEditorStatus("Generate a preview to open the validation and export screen.");
-        previewView.clearGeneratedYaml();
-        previewView.setValidationResult(new ValidationResult(false, "Validation not run yet.", ""));
-        previewView.setTechnicalDetails("");
-
-        for (SecretEntryRowView rowView : entryRowViews) {
-            rowView.clearSensitiveValue();
-        }
-        entryRowViews.clear();
-        formModel.entries().clear();
-        secretEditorView.entryRowsContainer().getChildren().clear();
-        addEntryRow(new SecretEntryRowModel());
-
+        applyDraftState(resetState);
         updateHomeSummary();
         updatePreviewState();
         updateKubesealStatus();
+    }
+
+    public boolean confirmApplicationClose() {
+        if (shuttingDown || (!hasSensitiveDraft() && activeTask == null)) {
+            return true;
+        }
+
+        Alert alert = new Alert(
+                Alert.AlertType.CONFIRMATION,
+                closeConfirmationMessage(),
+                ButtonType.OK,
+                ButtonType.CANCEL);
+        alert.setHeaderText("Close and clear the current session?");
+        if (window() != null) {
+            alert.initOwner(window());
+        }
+        return alert.showAndWait().filter(ButtonType.OK::equals).isPresent();
+    }
+
+    public void prepareForShutdown() {
+        if (shuttingDown) {
+            return;
+        }
+        shuttingDown = true;
+        cancelActiveOperation();
+        clearSensitiveState();
     }
 
     private void updateKubesealStatus() {
@@ -505,6 +543,19 @@ public final class AppController {
         return alert.showAndWait().filter(ButtonType.OK::equals).isPresent();
     }
 
+    private boolean confirmPlaintextAction(String actionTitle, String actionRisk) {
+        Alert alert = new Alert(
+                Alert.AlertType.CONFIRMATION,
+                actionRisk + " Continue only if you explicitly need plaintext outside SealForge.",
+                ButtonType.OK,
+                ButtonType.CANCEL);
+        alert.setHeaderText(actionTitle);
+        if (window() != null) {
+            alert.initOwner(window());
+        }
+        return alert.showAndWait().filter(ButtonType.OK::equals).isPresent();
+    }
+
     private void showInfo(String message) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION, message, ButtonType.OK);
         alert.setHeaderText(appContext.appConfig().applicationName());
@@ -560,11 +611,17 @@ public final class AppController {
 
         task.setOnSucceeded(event -> {
             activeTask = null;
+            if (shuttingDown) {
+                return;
+            }
             setBusyState(ownerScreen, false, "");
             onSuccess.accept(task.getValue());
         });
         task.setOnCancelled(event -> {
             activeTask = null;
+            if (shuttingDown) {
+                return;
+            }
             setBusyState(ownerScreen, false, "");
             previewView.setPreviewStatus("Operation cancelled.");
             secretEditorView.setEditorStatus("Operation cancelled.");
@@ -572,6 +629,9 @@ public final class AppController {
         });
         task.setOnFailed(event -> {
             activeTask = null;
+            if (shuttingDown) {
+                return;
+            }
             setBusyState(ownerScreen, false, "");
             Throwable failure = task.getException();
             if (isCancellationFailure(task, failure)) {
@@ -670,6 +730,73 @@ public final class AppController {
 
     private Window window() {
         return shellView.root().getScene() == null ? null : shellView.root().getScene().getWindow();
+    }
+
+    private void applyDraftState(SecretDraftInput draftState) {
+        formModel.certificatePemProperty().set("");
+        formModel.secretNameProperty().set(draftState.name());
+        formModel.namespaceProperty().set(draftState.namespace());
+        formModel.secretTypeProperty().set(draftState.type());
+        formModel.scopeProperty().set(draftState.scope());
+        loadedCertificate = null;
+        generatedYaml = null;
+
+        secretEditorView.clearInlineValidation();
+        secretEditorView.clearCertificateDetails();
+        secretEditorView.setEditorStatus("Generate a preview to open the validation and export screen.");
+        previewView.clearGeneratedYaml();
+        previewView.setValidationResult(new ValidationResult(false, "Validation not run yet.", ""));
+        previewView.setTechnicalDetails("");
+
+        for (SecretEntryRowView rowView : entryRowViews) {
+            rowView.clearSensitiveValue();
+        }
+        entryRowViews.clear();
+        formModel.entries().clear();
+        secretEditorView.entryRowsContainer().getChildren().clear();
+
+        if (draftState.entries().isEmpty()) {
+            addEntryRow(new SecretEntryRowModel());
+            return;
+        }
+
+        for (SecretEntryInput entry : draftState.entries()) {
+            SecretEntryRowModel rowModel = new SecretEntryRowModel();
+            rowModel.keyProperty().set(entry.key());
+            rowModel.valueProperty().set(entry.value());
+            addEntryRow(rowModel);
+        }
+    }
+
+    private void clearSensitiveState() {
+        applyDraftState(appContext.resetDraftUseCase().execute(appContext.runtimeSettings().defaultSecretType()));
+        secretEditorView.setEditorStatus("Session cleared for shutdown.");
+        previewView.setPreviewStatus("Session cleared for shutdown.");
+    }
+
+    private boolean hasSensitiveDraft() {
+        if (hasPlaintextPreview()) {
+            return true;
+        }
+        return formModel.entries().stream()
+                .map(model -> model.valueProperty().get())
+                .anyMatch(value -> value != null && !value.isBlank());
+    }
+
+    private boolean hasPlaintextPreview() {
+        return generatedYaml != null
+                && generatedYaml.plainSecretYaml() != null
+                && !generatedYaml.plainSecretYaml().isBlank();
+    }
+
+    private String closeConfirmationMessage() {
+        if (activeTask != null && hasSensitiveDraft()) {
+            return "Closing now will cancel the running kubeseal action and clear all in-memory plaintext values from this session.";
+        }
+        if (activeTask != null) {
+            return "Closing now will cancel the running kubeseal action.";
+        }
+        return "Closing now will clear all in-memory plaintext values from this session.";
     }
 
     private record GeneratePreviewResult(CertificateReference certificateReference, GeneratedYaml generatedYaml) {

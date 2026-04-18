@@ -15,8 +15,14 @@ import javafx.scene.layout.VBox;
 
 public final class PreviewView {
 
+    private static final String WARNING_STYLE =
+            "-fx-background-color: #fff7e6; -fx-background-radius: 10px; -fx-border-color: #f0c36d; "
+                    + "-fx-border-radius: 10px; -fx-padding: 10px; -fx-text-fill: #8a4b08;";
+
     private final VBox root = new VBox(14);
     private final Label previewStatusLabel = new Label("Generate a Secret draft from the editor to populate this screen.");
+    private final Label plaintextWarningLabel = new Label(
+            "Plain Secret YAML contains unsealed values. Copy or export it only when you intentionally need plaintext outside SealForge.");
     private final Button backToEditorButton = new Button("Back To Editor");
     private final Button validateButton = new Button("Validate SealedSecret");
     private final Button cancelOperationButton = new Button("Cancel Running Action");
@@ -73,7 +79,8 @@ public final class PreviewView {
     public void setGeneratedYaml(GeneratedYaml generatedYaml) {
         secretYamlArea.setText(generatedYaml.plainSecretYaml());
         sealedSecretYamlArea.setText(generatedYaml.sealedSecretYaml());
-        previewStatusLabel.setText("Review the generated YAML carefully before copying or exporting plaintext.");
+        previewStatusLabel.setText("Review both YAML outputs carefully before sharing them.");
+        setPlaintextWarningVisible(true);
         setActionsEnabled(true);
     }
 
@@ -81,6 +88,7 @@ public final class PreviewView {
         secretYamlArea.clear();
         sealedSecretYamlArea.clear();
         previewStatusLabel.setText("Generate a Secret draft from the editor to populate this screen.");
+        setPlaintextWarningVisible(false);
         setActionsEnabled(false);
     }
 
@@ -123,6 +131,7 @@ public final class PreviewView {
         root.setPadding(new Insets(6, 0, 0, 0));
         root.setId("preview-root");
         previewStatusLabel.setId("preview-status-label");
+        plaintextWarningLabel.setId("plaintext-warning-label");
         backToEditorButton.setId("back-to-editor-button");
         validateButton.setId("validate-sealed-secret-button");
         cancelOperationButton.setId("cancel-preview-operation-button");
@@ -138,6 +147,9 @@ public final class PreviewView {
         cancelOperationButton.setDisable(true);
 
         previewStatusLabel.setWrapText(true);
+        plaintextWarningLabel.setWrapText(true);
+        plaintextWarningLabel.setStyle(WARNING_STYLE);
+        setPlaintextWarningVisible(false);
         validationStatusLabel.setWrapText(true);
 
         HBox actions = new HBox(
@@ -156,7 +168,7 @@ public final class PreviewView {
                 tab("Diagnostics", diagnosticsPane()));
         VBox.setVgrow(tabPane, Priority.ALWAYS);
 
-        root.getChildren().addAll(previewStatusLabel, actions, tabPane);
+        root.getChildren().addAll(previewStatusLabel, plaintextWarningLabel, actions, tabPane);
     }
 
     private VBox diagnosticsPane() {
@@ -180,5 +192,10 @@ public final class PreviewView {
         textArea.setEditable(false);
         textArea.setWrapText(false);
         return textArea;
+    }
+
+    private void setPlaintextWarningVisible(boolean visible) {
+        plaintextWarningLabel.setVisible(visible);
+        plaintextWarningLabel.setManaged(visible);
     }
 }
