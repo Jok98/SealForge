@@ -214,6 +214,57 @@ jobs:
           pattern: sealforge-*
           merge-multiple: true
 
+      - name: Delete stale release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t current_assets < <(find release-artifacts -maxdepth 1 -type f -printf '%f\n' | sort)
+          if [[ ${#current_assets[@]} -eq 0 ]]; then
+            echo "No staged release assets were downloaded." >&2
+            exit 1
+          fi
+
+          declare -A keep_assets=()
+          for asset_name in "${current_assets[@]}"; do
+            keep_assets["${asset_name}"]=1
+          done
+
+          echo "Current staged assets:"
+          printf ' - %s\n' "${current_assets[@]}"
+
+          if ! gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG_NAME}" --jq '.id' >/dev/null 2>&1; then
+            echo "No existing release found for ${TAG_NAME}; skipping stale asset cleanup."
+            exit 0
+          fi
+
+          mapfile -t existing_assets < <(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG_NAME}" \
+              --jq '.assets[]? | "\(.id)\t\(.name)"'
+          )
+
+          if [[ ${#existing_assets[@]} -eq 0 ]]; then
+            echo "Release ${TAG_NAME} has no existing assets to clean up."
+            exit 0
+          fi
+
+          deleted_any=false
+          for asset_row in "${existing_assets[@]}"; do
+            IFS=$'\t' read -r asset_id asset_name <<< "${asset_row}"
+            if [[ -z "${keep_assets["${asset_name}"]+x}" ]]; then
+              echo "Deleting stale asset: ${asset_name}"
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
+              deleted_any=true
+            fi
+          done
+
+          if [[ "${deleted_any}" == false ]]; then
+            echo "No stale release assets needed deletion."
+          fi
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -222,4 +273,5 @@ jobs:
           target_commitish: ${{ steps.release.outputs.target_commitish }}
           generate_release_notes: true
           fail_on_unmatched_files: true
+          overwrite_files: true
           files: release-artifacts/**
