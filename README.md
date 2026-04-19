@@ -77,6 +77,8 @@ If Linux installer tooling is unavailable locally, you can still validate the `j
 SEALFORGE_LINUX_PACKAGE_TYPE=app-image SEALFORGE_PACKAGE_VERSION=0.1.0 ./scripts/release/build-installer.sh
 ```
 
+On macOS, `jpackage` requires the first version component to be greater than zero. Pre-`1.0.0` versions such as `0.1.0` are normalized by the packaging script when building a DMG.
+
 - Windows:
 
 ```powershell

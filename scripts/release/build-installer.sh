@@ -12,6 +12,27 @@ VENDOR_NAME="${SEALFORGE_VENDOR:-SealForge contributors}"
 ICON_DIR="packaging/icons"
 LINUX_PACKAGE_TYPE="${SEALFORGE_LINUX_PACKAGE_TYPE:-deb}"
 
+normalize_macos_package_version() {
+  local raw_version="$1"
+  local normalized="$raw_version"
+  local -a parts=()
+
+  if [[ ! "${raw_version}" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+    echo "macOS packaging requires a numeric app version with one to three dot-separated integer components." >&2
+    echo "Received '${raw_version}'." >&2
+    exit 1
+  fi
+
+  IFS='.' read -r -a parts <<< "${raw_version}"
+  if (( parts[0] <= 0 )); then
+    parts[0]=1
+    normalized="$(IFS=.; echo "${parts[*]}")"
+    echo "macOS packaging normalizes app version '${raw_version}' to '${normalized}' because the first component must be greater than zero." >&2
+  fi
+
+  printf '%s\n' "${normalized}"
+}
+
 if ! command -v jpackage >/dev/null 2>&1; then
   echo "jpackage is not available on PATH. Use a JDK distribution that includes jpackage." >&2
   exit 1
@@ -74,6 +95,7 @@ case "${OS_NAME}" in
   Darwin)
     PACKAGE_TYPE="dmg"
     ICON_PATH="${ICON_DIR}/sealforge.icns"
+    PACKAGE_VERSION="$(normalize_macos_package_version "${PACKAGE_VERSION}")"
     ;;
   *)
     echo "Unsupported platform '${OS_NAME}'. Use the Windows PowerShell packaging script on Windows." >&2

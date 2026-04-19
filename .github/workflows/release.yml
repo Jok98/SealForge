@@ -29,7 +29,7 @@ jobs:
           cache: maven
 
       - name: Run test suite
-        run: mvn -B -Dmaven.repo.local=/tmp/sealforge-m2 test
+        run: mvn -B test
 
   package:
     needs: verify
@@ -74,22 +74,34 @@ jobs:
           echo "package_version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "revision=${VERSION}" >> "${GITHUB_OUTPUT}"
 
-      - name: Install WiX Toolset
+      - name: Resolve WiX Toolset
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install wixtoolset --version=3.14.1 -y
-          $wixPath = "${env:ProgramFiles(x86)}\WiX Toolset v3.14\bin"
-          if (-not (Test-Path -Path $wixPath -PathType Container)) {
-              throw "WiX installation path not found at $wixPath"
+          $wixBin = Get-ChildItem -Path "${env:ProgramFiles(x86)}\WiX Toolset*\bin", "${env:ProgramFiles}\WiX Toolset*\bin" `
+              -Directory -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+
+          if (-not $wixBin) {
+              choco install wixtoolset -y
+              $wixBin = Get-ChildItem -Path "${env:ProgramFiles(x86)}\WiX Toolset*\bin", "${env:ProgramFiles}\WiX Toolset*\bin" `
+                  -Directory -ErrorAction SilentlyContinue |
+                  Sort-Object FullName -Descending |
+                  Select-Object -First 1
           }
-          $wixPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          if (-not $wixBin) {
+              throw "WiX installation path could not be resolved."
+          }
+
+          $wixBin.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "Using WiX from $($wixBin.FullName)"
 
       - name: Build modular app image
         shell: bash
         run: >
           mvn -B
-          -Dmaven.repo.local=/tmp/sealforge-m2
           -DskipTests
           -Drevision=${{ steps.version.outputs.revision }}
           clean package javafx:jlink

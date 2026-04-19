@@ -40,6 +40,8 @@ If your Linux workstation does not have `dpkg-deb` available, you can still vali
 SEALFORGE_LINUX_PACKAGE_TYPE=app-image SEALFORGE_PACKAGE_VERSION=0.1.0 ./scripts/release/build-installer.sh
 ```
 
+On macOS, `jpackage` rejects application versions whose first component is `0`. The packaging script automatically normalizes pre-`1.0.0` versions, for example `0.1.0` becomes `1.1.0` for the DMG metadata.
+
 Windows:
 
 ```powershell
